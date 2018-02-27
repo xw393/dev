@@ -1042,10 +1042,10 @@ the arrivals of current voyages. Under such circumstances, too many arrivals
 are found, so the following logic is used to handle such situation. 
 */
 
-DROP TABLE IF EXISTS t_arr_more_than_3;
+DROP TABLE IF EXISTS t_arr_more_than_1;
 
 
-CREATE TEMP TABLE t_arr_more_than_3 AS
+CREATE TEMP TABLE t_arr_more_than_1 AS
   (SELECT row_number() over(partition BY rec_id
                             ORDER BY date_arrive) row_num,
           a.*
@@ -1061,7 +1061,7 @@ DELETE
 FROM t_grain_voyage
 WHERE rec_id IN
     (SELECT DISTINCT rec_id
-     FROM t_arr_more_than_3);
+     FROM t_arr_more_than_1);
 
 
 DROP TABLE IF EXISTS t_arr_after_load;
@@ -1072,7 +1072,7 @@ CREATE TEMP TABLE t_arr_after_load AS ( WITH t1 AS
                                       ORDER BY date_arrive), 
                 date_arrive) prev_date_arrive,
        a.*
-FROM t_arr_more_than_3 a)
+FROM t_arr_more_than_1 a)
 SELECT b.date_arrive date_arrive_between,
        b.poi poi_arrive_between,
        b.draught_arrive draught_arrive_between,
@@ -1087,12 +1087,12 @@ WHERE b.draught_arrive < b.draught_depart -- a loading
 
 
 DELETE
-FROM t_arr_more_than_3
+FROM t_arr_more_than_1
 WHERE (rec_id,
        row_num) IN
     ( SELECT a.rec_id,
              a.row_num
-     FROM t_arr_more_than_3 a
+     FROM t_arr_more_than_1 a
      LEFT JOIN
        ( SELECT rec_id,
                 min(row_num) min_row_num
@@ -1103,18 +1103,18 @@ WHERE (rec_id,
 
  -- Remove row_num column.
 
-ALTER TABLE t_arr_more_than_3
+ALTER TABLE t_arr_more_than_1
 DROP COLUMN row_num;
 
  -- Update note column
 
-UPDATE t_arr_more_than_3
+UPDATE t_arr_more_than_1
 SET note = note||'--REVISED';
 
 
 INSERT INTO t_grain_voyage
 SELECT *
-FROM t_arr_more_than_3;
+FROM t_arr_more_than_1;
 
 /*
 TODO: add quantity splitting logic here for multiple arrivals.
@@ -1211,3 +1211,11 @@ SELECT now() date_run,
        round(count_matched::numeric/count_total, 4) coverage
 FROM t_count_total,
      t_count_matched;
+
+
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+  COST 100;
+ALTER FUNCTION dev.zxw_f_find_global_grain_voyage()
+  OWNER TO xiao;
