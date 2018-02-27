@@ -1,41 +1,3 @@
--- Function: dev.zxw_f_find_global_grain_voyage()
-
--- DROP FUNCTION dev.zxw_f_find_global_grain_voyage();
-
-CREATE OR REPLACE FUNCTION dev.zxw_f_find_global_grain_voyage()
-  RETURNS void AS
-$BODY$
-BEGIN
-DROP TABLE IF EXISTS t_cat_prod;
-CREATE TEMP TABLE t_cat_prod AS
-(SELECT b.cmdty,
-       a.cd_report,
-       product_code code
-FROM cat_product a
-LEFT JOIN lookup.cmdty b ON a.cd_report = b.cd_report
-UNION
-
-(SELECT 'C'::bpchar cmdty,
-        'CRUDE'::bpchar cd_report,
-        crude_code code
-FROM cat_crude
-WHERE crude_code NOT IN
-   (SELECT product_code
-    FROM cat_product)));
-
--- build arrival table which contains imo and country and city codes.
-drop table if exists t_asvt_arrival;
-create temp table t_asvt_arrival as (
-select b.imo,
-       c.lo_country_code,
-       c.lo_city_code,
-       a.*
-from asvt_arrival a
-left join as_vessel_exp b on a.vessel = b.vessel
-left join as_poi c on a.poi = c.poi);
-
-create index indx_imo_poi_date_arrive_asvt_arrival on t_asvt_arrival (imo, poi, date_arrive);
-
 
 -- Get grain data from inchcape.iss_process_2.
 drop table if exists t_grain;
@@ -217,6 +179,7 @@ alter table t_grain_load rename poi to poi_depart;
 (2) poi can handle R
 (3) negative draught change
 */
+
 drop table if exists t_find_disch_by_city;
 create temp table t_find_disch_by_city as (
 with t0 as (
@@ -229,10 +192,17 @@ select row_number() over(partition by rec_id order by date_arrive) row_num,
 from t_grain_load a
 left join t_asvt_arrival b on a.imo = b.imo
                         and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo                        
 where b.lo_country_code = a.dis_country_decl
   and b.lo_city_code = a.dis_city_decl
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
-  and 1.02*b.draught_arrive >= b.draught_depart
+  and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
+	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+    end)
 ),
 t_first_arr as (
 -- use to filter multiple discharge.
@@ -292,9 +262,16 @@ select row_number() over(partition by rec_id order by date_arrive) row_num,
 from t_grain_load a
 left join t_asvt_arrival b on a.imo = b.imo
                         and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo
 where b.lo_country_code = a.dis_country_decl
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
-  and 1.02*b.draught_arrive >= b.draught_depart
+  and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
+	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+    end)
   and rec_id not in (select rec_id from t_grain_voyage)
 ),
 t_first_arr as (
@@ -357,12 +334,19 @@ select row_number() over(partition by rec_id order by date_arrive) row_num,
 from t_grain_load a
 left join t_asvt_arrival b on a.imo = b.imo
                         and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo
 left join country d on d.un_code = a.dis_country_decl
 left join country e on e.un_code = b.lo_country_code
 where d.region = e.region
   and dis_country_decl is not null
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
-  and 1.02*b.draught_arrive >= b.draught_depart
+  and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
+	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+    end)
   and rec_id not in (select rec_id from t_grain_voyage)
 ),
 t_first_arr as (
@@ -423,9 +407,16 @@ select row_number() over(partition by rec_id order by date_arrive) row_num,
 from t_grain_load a
 left join t_asvt_arrival b on a.imo = b.imo
                         and b.date_arrive between a.date_depart + interval '1 day' and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo                        
 where b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
-  -- and 1.015*b.draught_arrive >= b.draught_depart
-  and rec_id not in (select rec_id from t_grain_voyage))
+  and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
+	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+    end)
+and rec_id not in (select rec_id from t_grain_voyage))
 
 select * from t0
 where row_num = 1
@@ -466,15 +457,13 @@ from t_find_disch_by_first_arr;
 Find voyages between date_depart and first arrival found by previous logic.
 If there exists one, add the arrival into voyage table.
 */
+
 drop table if exists t_find_disch_by_mid_arr;
 create temp table t_find_disch_by_mid_arr as (
 with t0 as (
 select row_number() over(partition by rec_id order by date_arrive) arr_num,
        *
 from t_grain_voyage
--- where imo = 9535876
--- and operation_date = '2017-06-09'::date
--- and grade = 'ED033'
 )
 
 select b.lo_country_code,
@@ -529,11 +518,6 @@ select rec_id,
        'FIND DISCHARGE BY ARR BETWEEN DEP AND 1ST ARR'::text note
 from t_find_disch_by_mid_arr;
 
-
-
-select * from t_find_disch_by_mid_arr
-where imo = 9535876
-and operation_date = '2017-06-09'
 
 /*
 When total draught change is negative for a vessel,
@@ -613,6 +597,7 @@ alter table t_grain_disch rename poi to poi_arrive;
 (2) poi can handle R
 (3) positive draught change
 */
+
 drop table if exists t_find_load_by_city;
 create temp table t_find_load_by_city as (
 with t0 as (
@@ -967,9 +952,91 @@ WHERE rec_id IN
      FROM t3 );
 
 /*
-TODO: add quantity splitting logic here for multiple arrivals.
+REMOVE ARRIVALS AFTER NEXT LOADINGS.
+
+Shuttle vessels could load and discharge between two places multiple times
+in a short period, therefore, arrivals of next voyages may be included as 
+the arrivals of current voyages. Under such circumstances, too many arrivals
+are found, so the following logic is used to handle such situation. 
 */
 
+DROP TABLE IF EXISTS t_arr_more_than_3;
+
+
+CREATE TEMP TABLE t_arr_more_than_3 AS
+  (SELECT row_number() over(partition BY rec_id
+                            ORDER BY date_arrive) row_num,
+          a.*
+   FROM t_grain_voyage a
+   WHERE rec_id IN (
+                      (SELECT rec_id
+                       FROM t_grain_voyage
+                       GROUP BY 1 HAVING count(*) > 3)));
+
+ -- Remove fake voyages and insert right voyages later.
+
+DELETE
+FROM t_grain_voyage
+WHERE rec_id IN
+    (SELECT DISTINCT rec_id
+     FROM t_arr_more_than_3);
+
+
+DROP TABLE IF EXISTS t_arr_after_load;
+
+
+CREATE TEMP TABLE t_arr_after_load AS ( WITH t1 AS
+(SELECT coalesce(lag(date_arrive) over(partition BY rec_id
+                                      ORDER BY date_arrive), 
+                date_arrive) prev_date_arrive,
+       a.*
+FROM t_arr_more_than_3 a)
+SELECT b.date_arrive date_arrive_between,
+       b.poi poi_arrive_between,
+       b.draught_arrive draught_arrive_between,
+       b.draught_depart draught_depart_between,
+       a.*
+FROM t1 a
+LEFT JOIN t_asvt_arrival b ON a.imo = b.imo
+                          AND b.date_arrive > a.prev_date_arrive
+                          AND b.date_arrive < a.date_arrive
+WHERE b.draught_arrive < b.draught_depart -- a loading
+);
+
+
+DELETE
+FROM t_arr_more_than_3
+WHERE (rec_id,
+       row_num) IN
+    ( SELECT a.rec_id,
+             a.row_num
+     FROM t_arr_more_than_3 a
+     LEFT JOIN
+       ( SELECT rec_id,
+                min(row_num) min_row_num
+        FROM t_arr_after_load
+        GROUP BY rec_id
+        ORDER BY 2) b ON a.rec_id = b.rec_id
+     WHERE a.row_num >= b.min_row_num);
+
+ -- Remove row_num column.
+
+ALTER TABLE t_arr_more_than_3
+DROP COLUMN row_num;
+
+ -- Update note column
+
+UPDATE t_arr_more_than_3
+SET note = note||'--REVISED';
+
+
+INSERT INTO t_grain_voyage
+SELECT *
+FROM t_arr_more_than_3;
+
+/*
+TODO: add quantity splitting logic here for multiple arrivals.
+*/
 
 
 /**
@@ -1062,10 +1129,3 @@ SELECT now() date_run,
        round(count_matched::numeric/count_total, 4) coverage
 FROM t_count_total,
      t_count_matched;
-
-END;
-$BODY$
-  LANGUAGE plpgsql VOLATILE
-  COST 100;
-ALTER FUNCTION dev.zxw_f_find_global_grain_voyage()
-  OWNER TO xiao;
