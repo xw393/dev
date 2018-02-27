@@ -280,10 +280,10 @@ where b.lo_country_code = a.dis_country_decl
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
   and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
-	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
-	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
-	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
-	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
 ),
 t_first_arr as (
@@ -349,10 +349,10 @@ where b.lo_country_code = a.dis_country_decl
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
   and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
-	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
-	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
-	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
-	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
   and rec_id not in (select rec_id from t_grain_voyage)
 ),
@@ -424,10 +424,10 @@ where d.region = e.region
   and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
   and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
-	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
-	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
-	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
-	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
   and rec_id not in (select rec_id from t_grain_voyage)
 ),
@@ -493,10 +493,10 @@ left join tanker c on a.imo = c.imo
 where b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
   and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
-	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
-	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
-	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
-	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
 and rec_id not in (select rec_id from t_grain_voyage))
 
@@ -563,10 +563,10 @@ left join tanker c on a.imo = c.imo
 where a.arr_num = 1
 and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
-	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handysize
-	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Handymax
-	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Panamax
-	else (b.draught_arrive - b.draught_depart) > 0.2*b.draught_arrive -- Capesize
+	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
+	when c.dwt >= 35000 and c.dwt < 60000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handymax
+	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
+	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
 and b.lo_country_code <> a.port_country
 );
