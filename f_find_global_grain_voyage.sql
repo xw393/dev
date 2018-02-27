@@ -1,61 +1,143 @@
 
+-- Function: dev.zxw_f_find_global_grain_voyage()
+
+-- DROP FUNCTION dev.zxw_f_find_global_grain_voyage();
+
+CREATE OR REPLACE FUNCTION dev.zxw_f_find_global_grain_voyage()
+  RETURNS void AS
+$BODY$
+BEGIN
+DROP TABLE IF EXISTS t_cat_prod;
+CREATE TEMP TABLE t_cat_prod AS
+(SELECT b.cmdty,
+       a.cd_report,
+       product_code code
+FROM cat_product a
+LEFT JOIN lookup.cmdty b ON a.cd_report = b.cd_report
+UNION
+
+(SELECT 'C'::bpchar cmdty,
+        'CRUDE'::bpchar cd_report,
+        crude_code code
+FROM cat_crude
+WHERE crude_code NOT IN
+   (SELECT product_code
+    FROM cat_product)));
+
+-- build arrival table which contains imo and country and city codes.
+DROP TABLE IF EXISTS t_asvt_arrival;
+
+
+CREATE TEMP TABLE t_asvt_arrival AS
+  (SELECT b.imo,
+          c.lo_country_code,
+          c.lo_city_code,
+          a.*
+   FROM asvt_arrival a
+   LEFT JOIN as_vessel_exp b ON a.vessel = b.vessel
+   LEFT JOIN as_poi c ON a.poi = c.poi);
+
+
+CREATE INDEX indx_imo_poi_date_arrive_asvt_arrival ON t_asvt_arrival (imo, poi, date_arrive);
+
 -- Get grain data from inchcape.iss_process_2.
-drop table if exists t_grain;
-create temp table t_grain as (
-select ((row_number() over w) + 10000)::int rec_id,
-       a.*
-from inchcape.iss_process_2 a
-where grade in (select code from t_cat_prod where cmdty = 'R')
-window w as (order by vessel, operation_date)
-);
+DROP TABLE IF EXISTS t_grain;
+
+CREATE TEMP TABLE t_grain
+AS (
+    SELECT
+        ((row_number()
+                OVER w) + 10000)::int rec_id,
+        a.*
+    FROM
+        inchcape.iss_process_2 a
+    WHERE
+        grade IN (
+            SELECT
+                code
+            FROM
+                t_cat_prod
+            WHERE
+                cmdty = 'R')
+            WINDOW w AS (
+            ORDER BY
+                vessel,
+                operation_date));
 
 -- update quantity values if quantity is less than 100.
-update t_grain as t0
-set quantity = t1.revised_quantity
-from (select b.dwt,
-       (case
-		when a.quantity < b.dwt/1000. then a.quantity*1000
-		else b.dwt
-       end) revised_quantity,	
-       a.* 
-from t_grain a
-left join tanker b on a.imo = b.imo
-where quantity < 100 and quantity > 0
-order by quantity) as t1
-where t0.imo = t1.imo and t0.quantity < 100 and t0.quantity > 0;
+UPDATE
+    t_grain AS t0
+SET
+    quantity = t1.revised_quantity
+FROM (
+    SELECT
+        b.dwt, ( CASE WHEN a.quantity < b.dwt / 1000. THEN
+                a.quantity * 1000
+            ELSE
+                b.dwt
+END) revised_quantity,
+a.*
+FROM
+    t_grain a
+    LEFT JOIN tanker b ON a.imo = b.imo
+WHERE
+    quantity < 100
+    AND quantity > 0
+ORDER BY
+    quantity) AS t1
+WHERE
+    t0.imo = t1.imo
+    AND t0.quantity < 100
+    AND t0.quantity > 0;
 
+ALTER TABLE t_grain RENAME lo_country_code TO port_country;
 
-alter table t_grain rename lo_country_code to port_country;
-alter table t_grain rename lo_city_code to port_city;
+ALTER TABLE t_grain RENAME lo_city_code TO port_city;
 
 -- process the records with direction as 'X'
-drop table if exists t_grain_dir_x;
-create temp table t_grain_dir_x as (
-select b.draught_arrive,
-       b.draught_depart,
-       a.*
-from t_grain a
-left join t_asvt_arrival b on a.imo = b.imo
-      and a.poi = b.poi
-      and a.date_arrive = b.date_arrive
-where upper(btrim(direction)) = 'X'
-);
+DROP TABLE IF EXISTS t_grain_dir_x;
+
+CREATE TEMP TABLE t_grain_dir_x
+AS (
+    SELECT
+        b.draught_arrive,
+        b.draught_depart,
+        a.*
+    FROM
+        t_grain a
+    LEFT JOIN t_asvt_arrival b ON a.imo = b.imo
+    AND a.poi = b.poi
+    AND a.date_arrive = b.date_arrive
+WHERE
+    upper(btrim(direction)) = 'X');
 
 -- positive draught change --> LOAD.
-update t_grain
-set direction = 'LOAD'
-where rec_id in (
-select rec_id from t_grain_dir_x
-where draught_arrive < draught_depart
-);
+UPDATE
+    t_grain
+SET
+    direction = 'LOAD'
+WHERE
+    rec_id IN (
+        SELECT
+            rec_id
+        FROM
+            t_grain_dir_x
+        WHERE
+            draught_arrive < draught_depart);
 
 -- negative draught change --> DISCHARGE
-update t_grain
-set direction = 'DISCHARGE'
-where rec_id in (
-select rec_id from t_grain_dir_x
-where draught_arrive > draught_depart
-);
+UPDATE
+    t_grain
+SET
+    direction = 'DISCHARGE'
+WHERE
+    rec_id IN (
+        SELECT
+            rec_id
+        FROM
+            t_grain_dir_x
+        WHERE
+            draught_arrive > draught_depart);
 
 /*
 zero-draught change cases is added here.
