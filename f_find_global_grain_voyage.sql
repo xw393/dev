@@ -262,8 +262,9 @@ alter table t_grain_load rename poi to poi_depart;
 (3) negative draught change
 */
 
-drop table if exists t_find_disch_by_city;
-create temp table t_find_disch_by_city as (
+-- version 1: take draught change into consideration
+drop table if exists t_find_disch_by_city_draft;
+create temp table t_find_disch_by_city_draft as (
 with t0 as (
 select row_number() over(partition by rec_id order by date_arrive) row_num,
        a.*,
@@ -322,8 +323,63 @@ select rec_id,
        report_date,
        archive_time,
        current_timestamp update_time,
-       'FIND DISCHARGE BY CITY'::text note
-from t_find_disch_by_city;
+       'FIND DISCHARGE BY CITY WITH DRAFT'::text note
+from t_find_disch_by_city_draft;
+
+-- version 2: without considering draft change.
+
+drop table if exists t_find_disch_by_city_no_draft;
+create temp table t_find_disch_by_city_no_draft as (
+with t0 as (
+select row_number() over(partition by rec_id order by date_arrive) row_num,
+       a.*,
+       b.date_arrive,
+       b.poi poi_arrive,
+       b.lo_country_code arr_country,
+       b.lo_city_code arr_city
+from t_grain_load a
+left join t_asvt_arrival b on a.imo = b.imo
+                        and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo                        
+where b.lo_country_code = a.dis_country_decl
+  and b.lo_city_code = a.dis_city_decl
+  and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
+  and a.rec_id not in (select distinct rec_id from t_grain_voyage)
+)
+
+-- only consider the first arrival due to draft change is not considered.
+select * from t0 where row_num = 1
+);
+
+insert into t_grain_voyage
+select rec_id,
+       vessel,
+       imo,
+       vessel_id,
+       operation,
+       operation_date,
+       quantity,
+       grade,
+       unit,
+       direction,
+       port,
+       port_country,
+       port_city,
+       date_depart,
+       poi_depart,
+       date_arrive,
+       poi_arrive,
+       charterer,
+       supplier,
+       receiver,
+       source_file,
+       source_sheet,
+       report_date,
+       archive_time,
+       current_timestamp update_time,
+       'FIND DISCHARGE BY CITY WITHOUT DRAFT'::text note
+from t_find_disch_by_city_no_draft;
+
 
 /*
 1.2 find discharge point based on declared country.
@@ -332,8 +388,9 @@ from t_find_disch_by_city;
 (3) negative draught change
 */
 
-drop table if exists t_find_disch_by_country;
-create temp table t_find_disch_by_country as (
+-- version 1: with draft
+drop table if exists t_find_disch_by_country_draft;
+create temp table t_find_disch_by_country_draft as (
 with t0 as (
 select row_number() over(partition by rec_id order by date_arrive) row_num,
        a.*,
@@ -354,7 +411,7 @@ where b.lo_country_code = a.dis_country_decl
 	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
 	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
-  and rec_id not in (select rec_id from t_grain_voyage)
+  and rec_id not in (select distinct rec_id from t_grain_voyage)
 ),
 t_first_arr as (
 -- use to filter multiple discharge.
@@ -392,8 +449,62 @@ select rec_id,
        report_date,
        archive_time,
        current_timestamp update_time,
-       'FIND DISCHARGE BY COUNTRY'::text note
-from t_find_disch_by_country;
+       'FIND DISCHARGE BY COUNTRY WITH DRAFT'::text note
+from t_find_disch_by_country_draft;
+
+-- version 2: without draft
+
+drop table if exists t_find_disch_by_country_no_draft;
+create temp table t_find_disch_by_country_no_draft as (
+with t0 as (
+select row_number() over(partition by rec_id order by date_arrive) row_num,
+       a.*,
+       b.date_arrive,
+       b.poi poi_arrive,
+       b.lo_country_code arr_country,
+       b.lo_city_code arr_city
+from t_grain_load a
+left join t_asvt_arrival b on a.imo = b.imo
+                        and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo
+where b.lo_country_code = a.dis_country_decl
+  and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
+  and rec_id not in (select distinct rec_id from t_grain_voyage)
+)
+
+select * from t0 where row_num = 1
+);
+
+insert into t_grain_voyage
+select rec_id,
+       vessel,
+       imo,
+       vessel_id,
+       operation,
+       operation_date,
+       quantity,
+       grade,
+       unit,
+       direction,
+       port,
+       port_country,
+       port_city,
+       date_depart,
+       poi_depart,
+       date_arrive,
+       poi_arrive,
+       charterer,
+       supplier,
+       receiver,
+       source_file,
+       source_sheet,
+       report_date,
+       archive_time,
+       current_timestamp update_time,
+       'FIND DISCHARGE BY COUNTRY WITHOUT DRAFT'::text note
+from t_find_disch_by_country_no_draft;
+
+
 
 /*
 1.3 find discharge point based on declared region.
@@ -402,8 +513,10 @@ from t_find_disch_by_country;
 (3) negative draught change
 */
 
-drop table if exists t_find_disch_by_region;
-create temp table t_find_disch_by_region as (
+--version 1: with draft change
+
+drop table if exists t_find_disch_by_region_draft;
+create temp table t_find_disch_by_region_draft as (
 with t0 as (
 select row_number() over(partition by rec_id order by date_arrive) row_num,
        a.*,
@@ -429,7 +542,7 @@ where d.region = e.region
 	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
 	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
-  and rec_id not in (select rec_id from t_grain_voyage)
+  and rec_id not in (select distinct rec_id from t_grain_voyage)
 ),
 t_first_arr as (
 -- use to filter multiple discharge.
@@ -467,8 +580,65 @@ select rec_id,
        report_date,
        archive_time,
        current_timestamp update_time,
-       'FIND DISCHARGE BY REGION'::text note
-from t_find_disch_by_region;
+       'FIND DISCHARGE BY REGION WITH DRAFT'::text note
+from t_find_disch_by_region_draft;
+
+-- version 2: without draft change 
+
+drop table if exists t_find_disch_by_region_no_draft;
+create temp table t_find_disch_by_region_no_draft as (
+with t0 as (
+select row_number() over(partition by rec_id order by date_arrive) row_num,
+       a.*,
+       b.date_arrive,
+       b.poi poi_arrive,
+       b.lo_country_code arr_country,
+       b.lo_city_code arr_city,
+       d.region region_decl,
+       e.region arr_region
+from t_grain_load a
+left join t_asvt_arrival b on a.imo = b.imo
+                        and b.date_arrive between a.date_depart and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo
+left join country d on d.un_code = a.dis_country_decl
+left join country e on e.un_code = b.lo_country_code
+where d.region = e.region
+  and dis_country_decl is not null
+  and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
+  and rec_id not in (select distinct rec_id from t_grain_voyage)
+)
+
+select * from t0 where row_num = 1
+);
+
+insert into t_grain_voyage
+select rec_id,
+       vessel,
+       imo,
+       vessel_id,
+       operation,
+       operation_date,
+       quantity,
+       grade,
+       unit,
+       direction,
+       port,
+       port_country,
+       port_city,
+       date_depart,
+       poi_depart,
+       date_arrive,
+       poi_arrive,
+       charterer,
+       supplier,
+       receiver,
+       source_file,
+       source_sheet,
+       report_date,
+       archive_time,
+       current_timestamp update_time,
+       'FIND DISCHARGE BY REGION WITHOUT DRAFT'::text note
+from t_find_disch_by_region_no_draft;
 
 /*
 1.4 find discharge point based on first negative draught change.
@@ -477,6 +647,7 @@ from t_find_disch_by_region;
 (3) first record meeting the above two requirements.
 */
 
+-- version 1: with draft change
 drop table if exists t_find_disch_by_first_arr;
 create temp table t_find_disch_by_first_arr as (
 with t0 as (
@@ -498,7 +669,7 @@ where b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%
 	when c.dwt >= 60000 and c.dwt < 80000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Panamax
 	else (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Capesize
     end)
-and rec_id not in (select rec_id from t_grain_voyage))
+and rec_id not in (select distinct rec_id from t_grain_voyage))
 
 select * from t0
 where row_num = 1
@@ -530,8 +701,59 @@ select rec_id,
        report_date,
        archive_time,
        current_timestamp update_time,
-       'FIND DISCHARGE BY 1ST ARRIVAL'::text note
+       'FIND DISCHARGE BY 1ST ARRIVAL WITH DRAFT'::text note
 from t_find_disch_by_first_arr;
+
+-- version 2: without draft change
+
+drop table if exists t_find_disch_by_first_arr_no_draft;
+create temp table t_find_disch_by_first_arr_no_draft as (
+with t0 as (
+select row_number() over(partition by rec_id order by date_arrive) row_num,
+       a.*,
+       b.date_arrive,
+       b.poi poi_arrive,
+       b.lo_country_code arr_country,
+       b.lo_city_code arr_city
+from t_grain_load a
+left join t_asvt_arrival b on a.imo = b.imo
+                        and b.date_arrive between a.date_depart + interval '1 day' and a.date_depart + interval '80 days'
+left join tanker c on a.imo = c.imo                        
+where b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
+and rec_id not in (select distinct rec_id from t_grain_voyage))
+
+select * from t0
+where row_num = 1
+);
+
+insert into t_grain_voyage
+select rec_id,
+       vessel,
+       imo,
+       vessel_id,
+       operation,
+       operation_date,
+       quantity,
+       grade,
+       unit,
+       direction,
+       port,
+       port_country,
+       port_city,
+       date_depart,
+       poi_depart,
+       date_arrive,
+       poi_arrive,
+       charterer,
+       supplier,
+       receiver,
+       source_file,
+       source_sheet,
+       report_date,
+       archive_time,
+       current_timestamp update_time,
+       'FIND DISCHARGE BY 1ST ARRIVAL WITHOUT DRAFT'::text note
+from t_find_disch_by_first_arr_no_draft;
 
 
 
@@ -699,7 +921,7 @@ where b.lo_country_code = a.load_country_decl
   and b.draught_arrive < b.draught_depart
 ),
 t_last_depart as (
--- use to filter multiple discharge.
+-- use to filter multiple loadings.
 select * from t0 where row_num = 1
 )
 
@@ -762,7 +984,7 @@ where b.lo_country_code = a.load_country_decl
   and rec_id not in (select distinct rec_id from t_grain_voyage)
 ),
 t_last_depart as (
--- use to filter multiple discharge.
+-- use to filter multiple loadings.
 select * from t0 where row_num = 1
 )
 
@@ -890,7 +1112,7 @@ left join t_asvt_arrival b on a.imo = b.imo
                           and b.date_arrive < a.date_arrive
 where b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%L%')
   and b.draught_arrive < b.draught_depart
-  and rec_id not in (select rec_id from t_grain_voyage))
+  and rec_id not in (select distinct rec_id from t_grain_voyage))
 
 select * from t0
 where row_num = 1
@@ -1117,8 +1339,38 @@ SELECT *
 FROM t_arr_more_than_1;
 
 /*
-TODO: add quantity splitting logic here for multiple arrivals.
+SPLITTING QUANTITY FOR MULTIPLE ARRIVALS.
 */
+WITH t_div AS ((
+        SELECT
+            rec_id,
+            count(*)
+            div
+        FROM
+            t_grain_voyage
+        GROUP BY
+            rec_id
+        HAVING
+            count(*) > 1))
+UPDATE
+    t_grain_voyage a
+SET
+    quantity = round(quantity / b.div, 0)
+FROM
+    t_div b
+WHERE
+    a.rec_id IN ((
+            SELECT
+                rec_id
+            FROM
+                t_grain_voyage
+            GROUP BY
+                rec_id
+            HAVING
+                count(*) > 1))
+        AND a.rec_id = b.rec_id;
+
+
 
 
 /**
@@ -1158,7 +1410,7 @@ CREATE TABLE dev.zxw_grain_unmatch_dep AS
 -- ALTER TABLE t_grain_voyage
 -- DROP COLUMN rec_id;
 
-TRUNCATE TABLE dev.zxw_global_grain_voyage;
+DELETE FROM  dev.zxw_global_grain_voyage;
  -- insert newly matched voyages into global_grain_voyage
 INSERT INTO dev.zxw_global_grain_voyage
 select a.rec_id,
