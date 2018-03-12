@@ -783,6 +783,7 @@ left join t_asvt_arrival b on b.date_arrive < a.date_arrive
                           and a.imo = b.imo
 left join tanker c on a.imo = c.imo                          
 where a.arr_num = 1
+and b.poi in (select poi from poi_dir where cmdty = 'R' and loadunl ilike '%U%')
 and (case -- the ratio is estimated by calculating avg(draught_change)/avg(draught_arrive)
 	when c.dwt < 10000 then (b.draught_arrive - b.draught_depart) >= 0.1 -- shuttle vessel
 	when c.dwt >= 10000 and c.dwt < 35000 then (b.draught_arrive - b.draught_depart) > 0.08*b.draught_arrive -- Handysize
@@ -1378,8 +1379,21 @@ WHERE
  */
 
 /* Store unmatched records into grain_unmatch*/
-DROP TABLE IF EXISTS dev.zxw_grain_unmatch_arr;
-CREATE TABLE dev.zxw_grain_unmatch_arr AS
+-- DROP TABLE IF EXISTS dev.zxw_grain_unmatch_arr;
+-- CREATE TABLE dev.zxw_grain_unmatch_arr AS
+--   (SELECT *
+--    FROM t_grain_load
+--    WHERE rec_id NOT IN
+--        (SELECT rec_id
+--         FROM t_grain_voyage)
+--      and rec_id not in (
+--   select rec_id from dev.zxw_global_grain_voyage_discard
+--   where discard_reason = 'DUPLICATED VOYAGE'
+--      )
+--    ORDER BY rec_id);
+
+DELETE FROM  dev.zxw_grain_unmatch_arr;
+INSERT INTO dev.zxw_grain_unmatch_arr
   (SELECT *
    FROM t_grain_load
    WHERE rec_id NOT IN
@@ -1391,9 +1405,24 @@ CREATE TABLE dev.zxw_grain_unmatch_arr AS
      )
    ORDER BY rec_id);
 
+
 /* Store unmatched records into grain_unmatch*/
-DROP TABLE IF EXISTS dev.zxw_grain_unmatch_dep;
-CREATE TABLE dev.zxw_grain_unmatch_dep AS
+-- DROP TABLE IF EXISTS dev.zxw_grain_unmatch_dep;
+-- CREATE TABLE dev.zxw_grain_unmatch_dep AS
+--   (SELECT *
+--    FROM t_grain_disch
+--    WHERE rec_id NOT IN
+--        (SELECT rec_id
+--         FROM t_grain_voyage)
+--      and rec_id not in (
+--   select rec_id from dev.zxw_global_grain_voyage_discard
+--   where discard_reason = 'DUPLICATED VOYAGE'
+--      )
+--    ORDER BY rec_id);
+
+
+DELETE FROM dev.zxw_grain_unmatch_dep;
+INSERT INTO  dev.zxw_grain_unmatch_dep
   (SELECT *
    FROM t_grain_disch
    WHERE rec_id NOT IN
@@ -1404,6 +1433,7 @@ CREATE TABLE dev.zxw_grain_unmatch_dep AS
   where discard_reason = 'DUPLICATED VOYAGE'
      )
    ORDER BY rec_id);
+
 
 
 -- remove old data from global_grain_voyage
