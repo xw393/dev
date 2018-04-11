@@ -71,24 +71,24 @@ SET
     quantity = t1.revised_quantity
 FROM (
     SELECT
-        b.dwt, ( CASE WHEN a.quantity < b.dwt / 1000. THEN
-                a.quantity * 1000
-            ELSE
-                b.dwt
-END) revised_quantity,
-a.*
-FROM
-    t_grain a
-    LEFT JOIN tanker b ON a.imo = b.imo
-WHERE
-    quantity < 100
-    AND quantity > 0
-ORDER BY
-    quantity) AS t1
+            b.dwt, 
+            ( CASE 
+            WHEN a.quantity < b.dwt / 1000. and a.quantity < 0.25 * b.dwt and a.quantity > 0 THEN a.quantity * 1000
+            when a.quantity > 0.25 * b.dwt and a.quantity < b.dwt THEN a.quantity
+            ELSE b.dwt
+            END) revised_quantity,
+    a.*
+    FROM
+        t_grain a
+        LEFT JOIN tanker b ON a.imo = b.imo
+    where a.quantity < 1000
+    or a.quantity > b.dwt *1.1
+    ORDER BY
+        quantity) AS t1
 WHERE
     t0.imo = t1.imo
-    AND t0.quantity < 100
-    AND t0.quantity > 0;
+    AND (t0.quantity < 1000
+      or t0.quantity > t1.dwt);
 
 ALTER TABLE t_grain RENAME lo_country_code TO port_country;
 
